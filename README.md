@@ -1,59 +1,61 @@
 # KorSub
 
-韓文影片 → 繁體中文字幕生成工具（Tauri 桌面應用）。
+**English** | [繁體中文](./README.zh-TW.md)
 
-輸入一部全韓文影片，自動完成：
+Korean video → Traditional Chinese subtitle generator (Tauri desktop app).
 
-1. **抽取音軌** — 以系統 FFmpeg 轉出 16kHz 單聲道 WAV
-2. **語音辨識** — 本機 whisper.cpp（`large-v3-turbo` 模型，Apple Silicon Metal 加速，完全離線免費）
-3. **翻譯** — Claude API（`claude-opus-4-8`）分批翻譯成台灣慣用繁體中文，帶前文脈絡
-4. **輸出** — 匯出 `.srt` 軟字幕（預設），或用 FFmpeg 燒錄硬字幕重新輸出影片
+Feed it a Korean-language video and it automatically:
 
-字幕在匯出前可於表格中逐條預覽與編輯，支援「中文＋韓文」雙語模式。
+1. **Extracts the audio track** — 16kHz mono WAV via the system FFmpeg
+2. **Transcribes speech** — local whisper.cpp (`large-v3-turbo` model, Metal-accelerated on Apple Silicon, fully offline and free)
+3. **Translates** — Claude API (`claude-opus-4-8`) translates in batches into natural Taiwanese-style Traditional Chinese, with rolling context
+4. **Outputs subtitles** — export `.srt` soft subtitles (default), or burn hard subtitles into a new video with FFmpeg
 
-## 技術架構
+Subtitles can be previewed and edited line-by-line before export, with an optional bilingual (Chinese + Korean) mode. Previously exported SRT files can be re-imported to skip transcription and translation entirely.
+
+## Architecture
 
 ```
-前端  Vue 3 + TypeScript + Vite（WebView）
-        │  Tauri invoke / event (IPC)
-後端  Rust (Tauri 2)
-        ├─ ffmpeg.rs    抽音軌、ffprobe、硬字幕燒錄（解析 -progress 回報進度）
-        ├─ whisper.rs   本機 whisper-cli 辨識（JSON 輸出 + 進度解析）、模型下載
-        ├─ translate.rs Claude API（structured output JSON schema，每批 25 條）
-        ├─ srt.rs       SRT 組裝（單語 / 雙語）
-        └─ settings.rs  API 金鑰存於 app config 目錄 settings.json
+Frontend  Vue 3 + TypeScript + Vite (WebView)
+            │  Tauri invoke / event (IPC)
+Backend   Rust (Tauri 2)
+            ├─ ffmpeg.rs    audio extraction, ffprobe, hard-sub burn-in (parses -progress for live progress)
+            ├─ whisper.rs   local whisper-cli transcription (JSON output + progress parsing), model download
+            ├─ translate.rs Claude API (structured output JSON schema, 25 lines per batch)
+            ├─ srt.rs       SRT build/parse (monolingual / bilingual)
+            └─ settings.rs  API key stored in the app config directory as settings.json
 ```
 
-進度透過 `pipeline-progress` 事件即時推送到前端（stage: model / extract / transcribe / translate / burn）。
+Progress is pushed to the frontend in real time via the `pipeline-progress` event (stages: model / extract / transcribe / translate / burn).
 
-## 需求
+## Requirements
 
-- [FFmpeg](https://ffmpeg.org/)：`brew install ffmpeg-full`
-  （注意：核心的 `ffmpeg` formula 自 v8 起不含 libass，沒有 `subtitles` filter，**燒錄硬字幕必須用 `ffmpeg-full`**；App 會優先搜尋 `/opt/homebrew/opt/ffmpeg-full/bin`）
-- [whisper.cpp](https://github.com/ggml-org/whisper.cpp)：`brew install whisper-cpp`
-- Anthropic API Key（Claude 翻譯）— App 內「⚙ API 設定」填入
+- [FFmpeg](https://ffmpeg.org/): `brew install ffmpeg-full`
+  (Note: the core `ffmpeg` formula dropped libass as of v8 and has no `subtitles` filter — **hard-sub burn-in requires `ffmpeg-full`**; the app searches `/opt/homebrew/opt/ffmpeg-full/bin` first)
+- [whisper.cpp](https://github.com/ggml-org/whisper.cpp): `brew install whisper-cpp`
+- Anthropic API key (for Claude translation) — enter it in the app under "⚙ API 設定"
 
-以上兩個 CLI 會自動搜尋 PATH 與 `/opt/homebrew/bin`、`/usr/local/bin`。
+Both CLIs are resolved automatically from PATH plus `/opt/homebrew/bin` and `/usr/local/bin`.
 
-首次使用會提示下載辨識模型 `ggml-large-v3-turbo.bin`（約 1.6GB，存於 app 資料目錄，只需一次）。
+On first use the app prompts to download the transcription model `ggml-large-v3-turbo.bin` (~1.6GB, stored in the app data directory, one-time only).
 
-API 金鑰**以明文儲存在本機** app config 目錄，請勿在共用機器上使用。
+The API key is **stored in plaintext** in the local app config directory — avoid using this on shared machines.
 
-## 開發
+## Development
 
 ```sh
 pnpm install
 pnpm tauri dev
 ```
 
-## 打包
+## Building
 
 ```sh
 pnpm tauri build
 ```
 
-## 已知限制（MVP）
+## Known limitations (MVP)
 
-- 語音辨識在本機執行，僅翻譯文字會送到 Anthropic API（音訊不出本機）
-- 打包發佈時使用者機器仍需自行安裝 FFmpeg 與 whisper.cpp（未內嵌 sidecar binary）
-- 韓文人聲重疊、背景音樂大的片段辨識品質會下降，可在表格中手動修正後再匯出
+- Speech recognition runs locally; only subtitle text is sent to the Anthropic API (audio never leaves the machine)
+- End users of a packaged build still need FFmpeg and whisper.cpp installed (no bundled sidecar binaries yet)
+- Recognition quality drops on overlapping voices or loud background music — fix lines manually in the table before exporting
